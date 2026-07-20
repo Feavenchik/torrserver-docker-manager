@@ -565,7 +565,7 @@ uninstall_torr() {
 # --- ГЛАВНЫЙ ЦИКЛ МЕНЮ ---
 while true; do
     echo "============================================="
-    echo "  TorrServer + Caddy Manager v1.0 by Feavenchik"
+    echo "  TorrServer + Caddy Manager v0.1-beta by Feavenchik"
     echo "============================================="
     STATUS=$(get_status)
     echo -e "  Статус: $STATUS"
