@@ -148,7 +148,7 @@ install_torr() {
     done
 
     echo -e "\n[1/6] Настройка Firewall и пакетов..."
-    if ! (apt update && apt install -y curl wget gnupg2 ca-certificates ufw socat cron unzip jq); then
+    if ! (apt update && apt install -y curl wget gnupg2 ca-certificates ufw socat cron unzip jq btop); then
         echo -e "\e[31mОшибка установки базовых пакетов! Проверьте интернет.\e[0m"
         return
     fi
