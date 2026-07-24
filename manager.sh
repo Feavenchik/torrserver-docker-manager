@@ -553,7 +553,6 @@ uninstall_torr() {
         ~/.acme.sh/acme.sh --revoke -d "$DOMAIN" >/dev/null 2>&1
         ~/.acme.sh/acme.sh --remove -d "$DOMAIN" >/dev/null 2>&1
     fi
-    ufw --force delete allow 80/tcp >/dev/null 2>&1
 
     cd /opt/torr-docker && docker compose down
     rm -rf /opt/torr-docker
