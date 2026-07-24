@@ -575,8 +575,9 @@ while true; do
     echo "  3. Управление пользователями"
     echo "  4. Изменить порт"
     echo "  5. Изменить доменное имя"
+    echo "  6. Мониторинг ресурсов (btop)"
     echo "---------------------------------------------"
-    echo "  6. Полное удаление TorrServer"
+    echo "  7. Полное удаление TorrServer"
     echo "  0. Выход"
     echo "============================================="
     read -p "Введите пункт меню: " choice
@@ -587,7 +588,21 @@ while true; do
         3) manage_users ;;
         4) change_port ;;
         5) change_domain ;;
-        6) uninstall_torr ;;
+        6) 
+            clear
+            if command -v btop &> /dev/null; then
+                btop
+            else
+                echo -e "\e[33mУтилита btop не найдена. Устанавливаем...\e[0m"
+                apt update >/dev/null 2>&1 && apt install -y btop >/dev/null 2>&1
+                if command -v btop &> /dev/null; then
+                    btop
+                else
+                    echo -e "\e[31mНе удалось установить btop. Проверьте подключение к сети.\e[0m"
+                fi
+            fi
+            ;;
+        7) uninstall_torr ;;
         0) clear; exit 0 ;;
         *) echo -e "\e[31mНеверный выбор! Попробуйте снова.\e[0m" ;;
     esac
