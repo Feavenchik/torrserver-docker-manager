@@ -537,6 +537,7 @@ change_domain() {
 
     ~/.acme.sh/acme.sh --revoke -d "$DOMAIN" >/dev/null 2>&1
     ~/.acme.sh/acme.sh --remove -d "$DOMAIN" >/dev/null 2>&1
+    rm -rf "$HOME/.acme.sh/${DOMAIN}_ecc"
 
     echo -e "\n\e[32mУспешно! Ваша новая ссылка для подключения: https://$NEW_DOMAIN:$PORT\e[0m"
 }
@@ -552,6 +553,7 @@ uninstall_torr() {
         ufw --force delete allow "$PORT/tcp" >/dev/null 2>&1
         ~/.acme.sh/acme.sh --revoke -d "$DOMAIN" >/dev/null 2>&1
         ~/.acme.sh/acme.sh --remove -d "$DOMAIN" >/dev/null 2>&1
+        rm -rf "$HOME/.acme.sh/${DOMAIN}_ecc"
     fi
 
     cd /opt/torr-docker && docker compose down
