@@ -27,9 +27,19 @@ load_config() {
 get_status() {
     if [[ -d "/opt/torr-docker" ]] && [[ -f "$MANAGER_CONF" ]]; then
         load_config
-        local ver=$(grep -oP 'image: ghcr.io/yourok/torrserver:\K.*' /opt/torr-docker/docker-compose.yml 2>/dev/null)
-        if [[ -n "$ver" ]]; then
-            echo -e "\e[32mУстановлен (Версия: $ver) | Порт: $PORT\e[0m"
+        # Читаем тег из файла (на случай, если контейнер остановлен)
+        local tag=$(grep -oP 'image: ghcr.io/yourok/torrserver:\K.*' /opt/torr-docker/docker-compose.yml 2>/dev/null)
+        
+        local real_ver=""
+        # Если контейнер запущен, вытягиваем реальную версию прямо из логов (читаем только хвост для оптимизации)
+        if command -v docker &>/dev/null && docker ps -q -f "name=^/torrserver$" | grep -q .; then
+            real_ver=$(docker logs --tail 50 torrserver 2>&1 | grep -o 'MatriX\.[^ ]*' | head -n 1)
+        fi
+
+        if [[ -n "$real_ver" ]]; then
+            echo -e "\e[32mУстановлен (Версия: $real_ver) | Порт: $PORT\e[0m"
+        elif [[ -n "$tag" ]]; then
+            echo -e "\e[32mУстановлен (Тег: $tag) | Порт: $PORT\e[0m"
         else
             echo -e "\e[33mУстановлен (Версия не определена)\e[0m"
         fi
@@ -239,6 +249,11 @@ services:
     image: ghcr.io/yourok/torrserver:latest
     container_name: torrserver
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       - TS_HTTPAUTH=1
       - TS_CONF_PATH=/opt/ts/config
@@ -252,6 +267,11 @@ services:
     image: caddy:2-alpine
     container_name: caddy
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     ports:
       - "$PORT:$PORT"
     volumes:
@@ -283,7 +303,7 @@ EOF
     if ! ~/.acme.sh/acme.sh --install-cert -d "$DOMAIN" \
       --key-file       /opt/certs/torr/torr.key \
       --fullchain-file /opt/certs/torr/torr.crt \
-      --reloadcmd      "chmod 600 /opt/certs/torr/torr.key && chmod 644 /opt/certs/torr/torr.crt && docker exec caddy caddy reload --config /etc/caddy/Caddyfile"; then
+      --reloadcmd      "chmod 600 /opt/certs/torr/torr.key && chmod 644 /opt/certs/torr/torr.crt && docker restart caddy"; then
         echo -e "\e[31mОшибка установки сертификата в Caddy!\e[0m"
         return
     fi
@@ -524,7 +544,7 @@ change_domain() {
     if ! ~/.acme.sh/acme.sh --install-cert -d "$NEW_DOMAIN" \
       --key-file       /opt/certs/torr/torr.key \
       --fullchain-file /opt/certs/torr/torr.crt \
-      --reloadcmd      "chmod 600 /opt/certs/torr/torr.key && chmod 644 /opt/certs/torr/torr.crt && docker exec caddy caddy reload --config /etc/caddy/Caddyfile"; then
+      --reloadcmd      "chmod 600 /opt/certs/torr/torr.key && chmod 644 /opt/certs/torr/torr.crt && docker restart caddy"; then
         echo -e "\e[31mОшибка применения сертификата! Откатываю настройки...\e[0m"
         mv Caddyfile.bak Caddyfile
         mv "${MANAGER_CONF}.bak" "$MANAGER_CONF"
@@ -535,8 +555,9 @@ change_domain() {
 
     rm -f Caddyfile.bak "${MANAGER_CONF}.bak" /opt/certs/torr/torr.crt.bak /opt/certs/torr/torr.key.bak
 
-    ~/.acme.sh/acme.sh --revoke -d "$DOMAIN" >/dev/null 2>&1
-    ~/.acme.sh/acme.sh --remove -d "$DOMAIN" >/dev/null 2>&1
+    # Удаление старого сертификата из базы acme.sh с флагом --ecc и очистка папки
+    ~/.acme.sh/acme.sh --revoke -d "$DOMAIN" --ecc >/dev/null 2>&1
+    ~/.acme.sh/acme.sh --remove -d "$DOMAIN" --ecc >/dev/null 2>&1
     rm -rf "$HOME/.acme.sh/${DOMAIN}_ecc"
 
     echo -e "\n\e[32mУспешно! Ваша новая ссылка для подключения: https://$NEW_DOMAIN:$PORT\e[0m"
@@ -551,8 +572,9 @@ uninstall_torr() {
     if [[ -f "$MANAGER_CONF" ]]; then
         load_config
         ufw --force delete allow "$PORT/tcp" >/dev/null 2>&1
-        ~/.acme.sh/acme.sh --revoke -d "$DOMAIN" >/dev/null 2>&1
-        ~/.acme.sh/acme.sh --remove -d "$DOMAIN" >/dev/null 2>&1
+        # Удаление старого сертификата из базы acme.sh с флагом --ecc и очистка папки
+        ~/.acme.sh/acme.sh --revoke -d "$DOMAIN" --ecc >/dev/null 2>&1
+        ~/.acme.sh/acme.sh --remove -d "$DOMAIN" --ecc >/dev/null 2>&1
         rm -rf "$HOME/.acme.sh/${DOMAIN}_ecc"
     fi
 
