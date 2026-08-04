@@ -85,8 +85,8 @@ check_dns() {
     fi
     
     if echo "$domain_ips" | grep -q "^$server_ip$"; then
-        # ПРОВЕРКА IPv6 (AAAA записи)
-        local aaaa_ip=$(getent ahostsv6 "$test_domain" | awk '{ print $1 }' | head -n 1)
+        # ПРОВЕРКА IPv6 (AAAA записи) с фильтром от гибридных ::ffff: адресов
+        local aaaa_ip=$(getent ahosts "$test_domain" | awk '{ print $1 }' | grep ":" | grep -v "::ffff:" | head -n 1)
         if [[ -n "$aaaa_ip" ]]; then
             echo -e "\e[33m[ВНИМАНИЕ] У вашего домена обнаружена IPv6-запись (AAAA).\e[0m"
             echo -e "\e[33mЕсли ваш сервер не поддерживает IPv6, выпуск сертификата может провалиться.\e[0m"
