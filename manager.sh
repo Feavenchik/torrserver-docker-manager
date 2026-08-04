@@ -372,6 +372,7 @@ change_version() {
     docker images ghcr.io/yourok/torrserver --format '{{.CreatedAt}}\t{{.ID}}' | sort -r | awk '{print $NF}' | tail -n +4 | xargs -r docker rmi >/dev/null 2>&1
     
     echo -e "\n\e[32mВерсия успешно изменена!\e[0m"
+    sleep 2 
 }
 
 # --- ПОДМЕНЮ: УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ ---
