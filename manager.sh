@@ -59,6 +59,7 @@ check_port() {
         echo -e "\e[31mНекорректный формат порта!\e[0m"
         return 1
     fi
+    # Проверяем строго TCP-соединения
     if ss -tlnp | grep -q ":$test_port "; then
         return 1 # Занят
     else
@@ -324,6 +325,14 @@ EOF
         return
     fi
 
+    # ЗАЩИТА НА БУДУЩЕЕ (Проверка прав Торрсервера)
+    if ! docker exec torrserver test -r /opt/ts/config/accs.db; then
+        echo -e "\n\e[31m[ВНИМАНИЕ] Контейнер запущен, но не может прочитать базу пользователей!\e[0m"
+        echo -e "\e[31mСкорее всего, в новой версии TorrServer разработчик изменил права доступа (UID).\e[0m"
+        echo -e "\e[33mРешение: Зайдите в меню скрипта, выберите пункт «2. Обновить / Понизить версию»\e[0m"
+        echo -e "\e[33mи вручную введите стабильную версию: MatriX.142.2\e[0m"
+    fi
+
     echo -e "\n\e[32mУстановка успешно завершена!\e[0m"
     echo -e "\e[32mВаша ссылка для подключения: https://$DOMAIN:$PORT\e[0m"
 }
@@ -358,6 +367,10 @@ change_version() {
     fi
     
     rm -f docker-compose.yml.bak
+    
+    # Очистка старых образов (сортируем по дате создания, оставляем только 3 последних)
+    docker images ghcr.io/yourok/torrserver --format '{{.CreatedAt}}\t{{.ID}}' | sort -r | awk '{print $NF}' | tail -n +4 | xargs -r docker rmi >/dev/null 2>&1
+    
     echo -e "\n\e[32mВерсия успешно изменена!\e[0m"
 }
 
