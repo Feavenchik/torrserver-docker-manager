@@ -31,9 +31,14 @@ get_status() {
         local tag=$(grep -oP 'image: ghcr.io/yourok/torrserver:\K.*' /opt/torr-docker/docker-compose.yml 2>/dev/null)
         
         local real_ver=""
-        # Если контейнер запущен, вытягиваем реальную версию прямо из логов (читаем только хвост для оптимизации)
         if command -v docker &>/dev/null && docker ps -q -f "name=^/torrserver$" | grep -q .; then
-            real_ver=$(docker logs --tail 50 torrserver 2>&1 | grep -o 'MatriX\.[^ ]*' | head -n 1)
+            # Основа: Запрашиваем версию напрямую у API TorrServer с короткими флагами для BusyBox
+            real_ver=$(docker exec torrserver wget -q -O- -T 2 -t 1 http://127.0.0.1:8090/echo 2>/dev/null | grep -o 'MatriX\.[^" ]*' | head -n 1)
+            
+            # Фоллбэк: если API не ответил (например, контейнер завис или только стартует)
+            if [[ -z "$real_ver" ]]; then
+                real_ver=$(docker logs torrserver 2>&1 | grep -m 1 -o 'MatriX\.[^ ]*')
+            fi
         fi
 
         if [[ -n "$real_ver" ]]; then
@@ -80,6 +85,14 @@ check_dns() {
     fi
     
     if echo "$domain_ips" | grep -q "^$server_ip$"; then
+        # ПРОВЕРКА IPv6 (AAAA записи)
+        local aaaa_ip=$(getent ahostsv6 "$test_domain" | awk '{ print $1 }' | head -n 1)
+        if [[ -n "$aaaa_ip" ]]; then
+            echo -e "\e[33m[ВНИМАНИЕ] У вашего домена обнаружена IPv6-запись (AAAA).\e[0m"
+            echo -e "\e[33mЕсли ваш сервер не поддерживает IPv6, выпуск сертификата может провалиться.\e[0m"
+            echo -e "\e[33mРекомендуем удалить AAAA-запись в панели DNS-провайдера, оставив только A-запись.\e[0m"
+            sleep 3
+        fi
         return 0
     else
         echo -e "\e[31mОшибка! Домен не направлен на IP этого сервера ($server_ip).\e[0m"
@@ -188,13 +201,16 @@ install_torr() {
 
     echo -e "\n[3/6] Настройка базы данных и состояния..."
     mkdir -p /opt/torr-docker/config
+    # Закрываем папку от других пользователей хоста, но позволяем докеру читать внутри
+    chmod 700 /opt/torr-docker/config
     
-    # Безопасная сборка JSON через jq с umask 077
-    if ! (umask 077; jq -n --arg u "$LOGIN" --arg p "$PASSWORD" '{($u): $p}' > /opt/torr-docker/config/accs.db); then
+    # Безопасная сборка JSON через jq
+    if ! jq -n --arg u "$LOGIN" --arg p "$PASSWORD" '{($u): $p}' > /opt/torr-docker/config/accs.db; then
         echo -e "\e[31mОшибка создания базы аутентификации!\e[0m"
         return
     fi
-    chmod 600 /opt/torr-docker/config/accs.db
+    # Делаем файл читаемым для внутреннего юзера контейнера
+    chmod 644 /opt/torr-docker/config/accs.db
     
     echo "DOMAIN=$DOMAIN" > "$MANAGER_CONF"
     echo "PORT=$PORT" >> "$MANAGER_CONF"
@@ -411,8 +427,9 @@ add_user() {
         echo -e "\e[31mПароли не совпадают или слишком короткие!\e[0m"; return
     fi
     
-    if (umask 077; jq --arg u "$U" --arg p "$P" '. + {($u): $p}' /opt/torr-docker/config/accs.db > /opt/torr-docker/config/accs.db.tmp); then
+    if jq --arg u "$U" --arg p "$P" '. + {($u): $p}' /opt/torr-docker/config/accs.db > /opt/torr-docker/config/accs.db.tmp; then
         mv /opt/torr-docker/config/accs.db.tmp /opt/torr-docker/config/accs.db
+        chmod 644 /opt/torr-docker/config/accs.db
         if ! docker restart torrserver >/dev/null; then echo -e "\e[31mОшибка перезапуска контейнера!\e[0m"; fi
         echo -e "\e[32mУспешно! Пользователь $U добавлен.\e[0m"
     else
@@ -433,8 +450,9 @@ change_user_password() {
         echo -e "\e[31mПароли не совпадают или слишком короткие!\e[0m"; return
     fi
     
-    if (umask 077; jq --arg u "$U" --arg p "$P" '.[$u] = $p' /opt/torr-docker/config/accs.db > /opt/torr-docker/config/accs.db.tmp); then
+    if jq --arg u "$U" --arg p "$P" '.[$u] = $p' /opt/torr-docker/config/accs.db > /opt/torr-docker/config/accs.db.tmp; then
         mv /opt/torr-docker/config/accs.db.tmp /opt/torr-docker/config/accs.db
+        chmod 644 /opt/torr-docker/config/accs.db
         if ! docker restart torrserver >/dev/null; then echo -e "\e[31mОшибка перезапуска контейнера!\e[0m"; fi
         echo -e "\e[32mУспешно! Пароль для $U изменен.\e[0m"
     else
@@ -454,8 +472,9 @@ delete_user() {
         return
     fi
     
-    if (umask 077; jq --arg u "$U" 'del(.[$u])' /opt/torr-docker/config/accs.db > /opt/torr-docker/config/accs.db.tmp); then
+    if jq --arg u "$U" 'del(.[$u])' /opt/torr-docker/config/accs.db > /opt/torr-docker/config/accs.db.tmp; then
         mv /opt/torr-docker/config/accs.db.tmp /opt/torr-docker/config/accs.db
+        chmod 644 /opt/torr-docker/config/accs.db
         if ! docker restart torrserver >/dev/null; then echo -e "\e[31mОшибка перезапуска контейнера!\e[0m"; fi
         echo -e "\e[32mУспешно! Пользователь $U удален.\e[0m"
     else
